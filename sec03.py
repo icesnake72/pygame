@@ -30,6 +30,8 @@ clock = pygame.time.Clock()
 # image모듈의 load()함수는 파일로부터 이미지를 불러와 
 # surface 객체를 생성하여 반환한다
 image_path = "intro_ball.gif"
+#image_path = "ball.gif"
+# image_path = "ball2.gif"
 ball = pygame.image.load(image_path)
 
 # 객체의 위치정보나 충돌여부를 체크하기 위해
@@ -77,6 +79,7 @@ while running:
   # screen Surface객체에 text객체를 0,0위치에 그린다.
   screen.blit(text, (0, 0))
   # display모듈의 update()함수는 screen Surface 객체를 윈도우에 나타낸다
-  pygame.display.update()
+  pygame.display.update(ballrect)
+  pygame.display.flip()
   
   #  print(f'display updated ===> ({clock.get_time()})')
