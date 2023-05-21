@@ -3,7 +3,7 @@ bouncing ball 을 class 형태로 바꾸기
 '''
 
 import pygame
-import threading
+import threading, sys, os
 
 
 
@@ -15,15 +15,15 @@ class Ball(pygame.sprite.Sprite):
     self.speed = [x for x in speed]
     self.screen_size = [x for x in screen_size]
     
-    print(self.speed)
-    print(self.screen_size)
+    # print(self.speed)
+    # print(self.screen_size)
   
   def update(self):
     # ball 객체의 위치값을 나타내는 ballrect의 값을 speed값에 의해 변경한다.  
     self.rect = self.rect.move(self.speed)
     
-    print(self.rect.left, self.rect.right, self.rect.top, self.rect.bottom)
-    print(self.screen_size[0], self.screen_size[1])
+    # print(self.rect.left, self.rect.right, self.rect.top, self.rect.bottom)
+    # print(self.screen_size[0], self.screen_size[1])
         
     # ballrect의 left, right 값이 음수가 되거나, 게임영역 넓이를 넘어가면 좌우 이동 offset값의 부호를 바꾼다.
     if self.rect.left < 0 or self.rect.right > self.screen_size[0]:    
@@ -45,6 +45,17 @@ if __name__=='__main__':
   speed = [2,2]   # 공이 이동할 스피드(Pixel 단위)
   black = 0,0,0   # 이렇게 저장하면 tuple의 형태로 black이라는 변수가 초기화된다. 백그라운드 컬러를 블랙(0,0,0)으로 초기화
   
+  # 현재 실행 파일의 경로 추출
+  current_path = os.path.dirname(sys.argv[0])
+  print(current_path)
+
+  # 절대 경로로 변환
+  absolute_path = os.path.abspath(current_path)
+  print(absolute_path)
+  
+  # 폰트 파일(ttf) Path 구하기 : 
+  font_filepath = os.path.join(absolute_path, 'NanumGothic.ttf')
+  
   pygame.init()
   
   ball = Ball('intro_ball.gif', (2,2), (SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -53,12 +64,11 @@ if __name__=='__main__':
   all_sprites.add(ball)
   
   # 폰트 객체를 생성하고 초기화한다.
-  font = pygame.font.Font(None, 24)
+  font = pygame.font.Font(font_filepath, 24)
   
   # 게임 영역 지정하고 메인 서피스 객체를 생성
   screen = pygame.display.set_mode(screen_size)
   clock = pygame.time.Clock()
-  
   
   # 루프를 반복하거나 탈출하기 위한 Flag(switch)변수를 초기화.
   running = True
@@ -77,7 +87,7 @@ if __name__=='__main__':
         running = False
     
     # ballrect정보를 화면에 출력하기 위해 text Surface 객체를 생성한다.
-    text = font.render(f"Ball Position : (x={ball.rect.x}), (y={ball.rect.y},speed=({ball.speed}))", 
+    text = font.render(f"공위치 : (x={ball.rect.x}), (y={ball.rect.y},속도=({ball.speed}))", 
                       True, # anti-alias
                       (255, 255, 255)) # text color
     
@@ -96,5 +106,5 @@ if __name__=='__main__':
     screen.blit(text, (0, 0))
     
     # display모듈의 update()함수는 screen Surface 객체를 윈도우에 나타낸다
-    #pygame.display.update(ballrect)
+    # pygame.display.update(ballrect)
     pygame.display.flip()
