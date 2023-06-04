@@ -192,6 +192,7 @@ while running:
   # 화면 그리기
   # screen.fill(BLACK)        
   screen.blit(background, (0, back_y_pos))
+  print(back_y_pos)
     
   all_sprites.draw(screen)    
   screen.blit(text, (0, 0))
