@@ -329,6 +329,11 @@ class Game:
         self.enemy_img = load_image(ENEMY_FILE, fallback_color=(200, 40, 40), pointing_up=False)
         self.enemy_mask = pygame.mask.from_surface(self.enemy_img)
 
+        # M5        
+        self.font = load_font(16)
+        self.font_big = load_font(50)
+
+
         # ── 스프라이트 그룹 ──
         # all_sprites : 업데이트/그리기용 전체 묶음
         # enemies/bullets : 충돌 판정용 분류
@@ -347,10 +352,33 @@ class Game:
         pygame.time.set_timer(self.SPAWN_EVENT, SPAWN_INTERVAL_MS)   # M8 에서 삭제
 
         self.running = True
+        self.new_game()
         
     # ------------------------------------------------------------------
     # 게임 상태 관리
     # ------------------------------------------------------------------
+    def new_game(self) -> None:
+        """점수·목숨까지 전부 초기화 (처음 시작, R 재시작)"""
+        self.score = 0
+        self.life = START_LIFE
+        self.reset_round()
+
+    def reset_round(self) -> None:
+        """
+        목숨을 잃었을 때의 리셋: 적·총알 제거 + 위치 초기화.
+        점수와 목숨은 유지한다. (new_game 과 역할 분리)
+        """
+        # 그룹을 순회하면서 kill() 하면 순회 중 그룹이 변경되므로 list() 로 복사 후 처리
+        # kill() 은 스프라이트가 속한 "모든" 그룹(all_sprites 포함)에서 제거한다.
+        for sprite in list(self.enemies) + list(self.bullets):
+            sprite.kill()
+        self.player.reset_position()
+        self.background.reset()
+
+    def lose_life(self) -> None:
+        self.life -= 1
+        self.reset_round()
+
     def spawn_enemy(self) -> None:
         Enemy(self.enemy_img, self.enemy_mask, self.all_sprites, self.enemies)
 
@@ -386,6 +414,25 @@ class Game:
         # 모든 스프라이트의 update() 를 호출 - 반드시 프레임당 1회
         # (2번 호출하면 모든 객체가 2배 속도로 움직인다)
         self.all_sprites.update()
+        self.check_collisions()
+        
+    def check_collisions(self) -> None:
+        # 1) 총알 ↔ 적 : 먼저 처리해야 같은 프레임에 격추된 적이 "통과/충돌"로 잡히지 않음
+        #    groupcollide(A, B, A삭제여부, B삭제여부) → {총알: [맞은 적 목록]}
+        hits = pygame.sprite.groupcollide(self.bullets, self.enemies, True, True)
+        killed = sum(len(enemies) for enemies in hits.values())   # 한 총알이 여러 적을 맞춘 경우 포함
+        self.score += killed * SCORE_PER_KILL
+
+        # 2) 아군 ↔ 적 : collide_mask 로 실제 모양끼리 비교 (투명 모서리 스침은 무시)
+        #    spritecollideany 는 첫 충돌만 찾으면 바로 반환 → 리스트를 만드는 spritecollide 보다 가벼움
+        crashed = pygame.sprite.spritecollideany(
+            self.player, self.enemies, pygame.sprite.collide_mask) # pyright: ignore[reportArgumentType]
+
+        # 3) 적 하단 통과 : 디펜더 규칙 - 한 대라도 놓치면 실패
+        escaped = any(enemy.rect.top > SCREEN_HEIGHT for enemy in self.enemies)
+
+        if crashed or escaped:
+            self.lose_life()
 
     # ------------------------------------------------------------------
     # 그리기 (뒤에 있는 것부터: 배경 → 스프라이트 → UI)
@@ -393,11 +440,30 @@ class Game:
     def draw(self) -> None:
         self.background.draw(self.screen)
         self.all_sprites.draw(self.screen)
+        self.draw_hud()
 
         # 메모리에 그린 화면을 실제 모니터에 한 번에 반영 (더블 버퍼링 → 깜빡임 방지)
         pygame.display.flip()
 
+    def draw_text(self, font: pygame.font.Font, text: str, color, **pos) -> None:
+        """
+        그림자 있는 텍스트 출력. 밝은 배경 위에서도 글자가 잘 보이게 한다.
+        pos 예) topleft=(10, 5), center=(320, 240)
+        """
+        shadow = font.render(text, True, BLACK)        # True = 안티앨리어싱(부드러운 글자)
+        label = font.render(text, True, color)
+        rect = label.get_rect(**pos)
+        self.screen.blit(shadow, rect.move(2, 2))
+        self.screen.blit(label, rect)
 
+    def draw_hud(self) -> None:
+        self.draw_text(self.font, f"점수 : {self.score}", WHITE, topleft=(10, 8))
+        self.draw_text(self.font, f"목숨 : {self.life}", WHITE,
+                       topright=(SCREEN_WIDTH - 10, 8))
+
+        # 실제 FPS 표시 (디버깅용) - 화면 왼쪽 아래
+        self.draw_text(self.font, f"FPS {self.clock.get_fps():.0f}", WHITE,
+                       bottomleft=(10, SCREEN_HEIGHT - 8))
 
 
 
