@@ -62,8 +62,9 @@ PLAYER_SPEED = 5                  # 초당 300px
 PLAYER_BOTTOM_MARGIN = 10         # 시작 위치: 화면 하단에서 띄울 거리
 SHOT_DELAY_MS = 100               # 발사 간격(ms). 작을수록 연사가 빨라짐
 
-
-
+# 총알
+BULLET_SIZE = (6, 16)             # 세로로 길게 → 진행 방향이 눈에 잘 띔
+BULLET_SPEED = -9                 # 음수 = 위로 이동. |속도| <= 총알 길이(16)여야 끊겨 보이지 않음
 
 # 색 (R, G, B)
 WHITE = (255, 255, 255)
@@ -175,6 +176,39 @@ class ScrollingBackground:
         
         if DEBUG:
             logger.debug('offset=%s blits=%d y=%s', self.offset, len(blits_ys), blits_ys)
+            
+            
+            
+class Bullet(pygame.sprite.Sprite):
+    """아군 총알: 위로 직진하고 화면 밖으로 나가면 스스로 제거"""
+
+    _image_cache = None   # 모든 총알이 같은 모양 → 한 번만 그려서 공유 (매 발사마다 그리면 낭비)
+
+    @classmethod
+    def _get_image(cls) -> pygame.Surface:
+        if cls._image_cache is None:
+            w, h = BULLET_SIZE
+            img = pygame.Surface((w, h), pygame.SRCALPHA)       # 둥근 모서리 바깥은 투명
+            r = img.get_rect()
+            pygame.draw.rect(img, RED, r, border_radius=3)                      # 바깥 = 테두리 색
+            pygame.draw.rect(img, ORANGE, r.inflate(-2, -2), border_radius=2)   # 안쪽 채우기
+            pygame.draw.line(img, BULLET_CORE,                                  # 밝은 심지 → 시인성 향상
+                             (r.centerx - 1, 3), (r.centerx - 1, r.bottom - 5))
+            cls._image_cache = img
+        return cls._image_cache
+
+    def __init__(self, x: int, y: int, *groups):
+        super().__init__(*groups)                 # 생성과 동시에 넘겨받은 그룹들에 등록
+        self.image = self._get_image()
+        self.rect = self.image.get_rect(centerx=x, bottom=y)   # 비행기 코끝에서 발사
+        self.speed = BULLET_SPEED
+
+    def update(self) -> None:
+        self.rect.y += self.speed
+        # 화면 위로 완전히 벗어나면 제거 → 안 지우면 보이지 않는 총알이 계속 쌓여 느려짐
+        if self.rect.bottom < 0:
+            self.kill()
+
 
 
 # =====================================================================
@@ -186,13 +220,17 @@ class ScrollingBackground:
 class Player(pygame.sprite.Sprite):
     """아군 비행기: 키 입력으로 이동/발사"""
 
-    def __init__(self, image: pygame.Surface):
+    def __init__(self, image: pygame.Surface, bullet_groups: tuple):
         super().__init__()
         self.image = image
         # mask: 투명 부분을 제외한 실제 모양 → 충돌 판정을 사각형보다 정확하게
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.speed = PLAYER_SPEED
+        # 총알을 어떤 그룹에 넣을지 외부에서 주입받는다.
+        # (전역 변수 all_sprites/bullets 에 직접 접근하지 않음 → 클래스가 독립적)
+        self.bullet_groups = bullet_groups
+        self.last_shot = 0        
         self.screen_rect = pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
         self.reset_position()
 
@@ -211,6 +249,17 @@ class Player(pygame.sprite.Sprite):
 
         # clamp_ip: rect 를 지정 영역 안으로 밀어 넣음 (상하좌우 경계 체크를 한 줄로)
         self.rect.clamp_ip(self.screen_rect)
+        
+        if keys[pygame.K_SPACE]:
+            self.shoot()
+            
+    def shoot(self) -> None:
+        # 발사 쿨타임: 마지막 발사 후 SHOT_DELAY_MS 가 지나야 다시 발사
+        # (없으면 키를 누르고 있는 동안 매 프레임 = 초당 60발 발사)
+        now = pygame.time.get_ticks()
+        if now - self.last_shot >= SHOT_DELAY_MS:
+            self.last_shot = now
+            Bullet(self.rect.centerx, self.rect.top, *self.bullet_groups)
 
 
 # =====================================================================
@@ -244,9 +293,11 @@ class Game:
 
         # ── 스프라이트 그룹 ──
         # all_sprites : 업데이트/그리기용 전체 묶음
+        # enemies/bullets : 충돌 판정용 분류
         self.all_sprites = pygame.sprite.Group()
+        self.bullets = pygame.sprite.Group()
 
-        self.player = Player(player_img)
+        self.player = Player(player_img, bullet_groups=(self.all_sprites, self.bullets))
         self.all_sprites.add(self.player)
 
 
