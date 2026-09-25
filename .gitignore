@@ -1,0 +1,14 @@
+### python ###
+/__pycache__/
+
+### VSCode ###
+.vscode/
+
+.DS_Store
+.venv/
+
+*.log
+
+intro_ball.gif
+*.spec
+background1.jpg
