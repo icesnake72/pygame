@@ -66,6 +66,14 @@ SHOT_DELAY_MS = 100               # 발사 간격(ms). 작을수록 연사가 �
 BULLET_SIZE = (6, 16)             # 세로로 길게 → 진행 방향이 눈에 잘 띔
 BULLET_SPEED = -9                 # 음수 = 위로 이동. |속도| <= 총알 길이(16)여야 끊겨 보이지 않음
 
+# 적
+ENEMY_SPEED_RANGE = (1.0, 2.0)    # 소수 속도 → Enemy에서 float 좌표로 누적 처리
+SPAWN_INTERVAL_MS = 900           # 적 생성 간격(ms). 클수록 적게 나옴 (레벨 1 기준)
+
+# 게임 규칙
+START_LIFE = 3
+SCORE_PER_KILL = 10
+
 # 색 (R, G, B)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
@@ -262,6 +270,34 @@ class Player(pygame.sprite.Sprite):
             Bullet(self.rect.centerx, self.rect.top, *self.bullet_groups)
 
 
+
+class Enemy(pygame.sprite.Sprite):
+    """적 비행기: 위에서 아래로 내려옴. 하단 통과 판정은 Game 이 담당"""
+
+    def __init__(self, image: pygame.Surface, mask: pygame.mask.Mask, *groups,
+                    speed_range=ENEMY_SPEED_RANGE):
+        # speed_range 는 *groups 뒤에 있으므로 반드시 키워드로 전달해야 한다 (위치 인자와 혼동 방지)
+        super().__init__(*groups)
+        # 이미지/마스크는 Game 에서 한 번만 로드해서 모든 적이 공유
+        # (적을 만들 때마다 파일을 읽으면 디스크 접근으로 프레임 드랍 발생)
+        self.image = image
+        self.mask = mask
+        self.rect = self.image.get_rect()
+        self.rect.x = random.randint(0, SCREEN_WIDTH - self.rect.width)  # 이미지 폭만큼 빼야 화면 안에 생성
+        self.rect.bottom = 0                     # 화면 바로 위에서 시작 → 갑자기 튀어나오지 않음
+
+        # rect 좌표는 정수만 저장된다. rect.y += 1.5 를 하면 소수점이 버려지므로
+        # 실제 위치는 float 로 따로 누적하고, 그릴 때만 rect 에 반영한다.
+        self.y = float(self.rect.y)
+        self.speed = random.uniform(*speed_range)   # 현재 레벨의 속도 범위 적용
+
+    def update(self) -> None:
+        self.y += self.speed
+        self.rect.y = round(self.y)
+        # 여기서 화면 밖 kill() 을 하지 않는다.
+        # → 스스로 사라지면 Game 이 "하단 통과"를 감지할 수 없기 때문
+
+
 # =====================================================================
 # 5. Game - 게임 루프와 규칙
 # =====================================================================
@@ -290,19 +326,34 @@ class Game:
         )
         
         player_img = load_image(PLAYER_FILE, fallback_color=(80, 160, 255))
+        self.enemy_img = load_image(ENEMY_FILE, fallback_color=(200, 40, 40), pointing_up=False)
+        self.enemy_mask = pygame.mask.from_surface(self.enemy_img)
 
         # ── 스프라이트 그룹 ──
         # all_sprites : 업데이트/그리기용 전체 묶음
         # enemies/bullets : 충돌 판정용 분류
         self.all_sprites = pygame.sprite.Group()
+        self.enemies = pygame.sprite.Group()
         self.bullets = pygame.sprite.Group()
 
         self.player = Player(player_img, bullet_groups=(self.all_sprites, self.bullets))
         self.all_sprites.add(self.player)
-
-
+        
+        # ── 적 생성 타이머 ──
+        # 매 프레임 확률로 생성하면 FPS 에 따라 생성량이 달라진다.
+        # 타이머 이벤트는 실제 시간 기준으로 일정 간격마다 발생한다.
+        # 실제 간격 설정(set_timer)은 레벨에 따라 apply_difficulty() 에서 한다.
+        self.SPAWN_EVENT = pygame.USEREVENT + 1
+        pygame.time.set_timer(self.SPAWN_EVENT, SPAWN_INTERVAL_MS)   # M8 에서 삭제
 
         self.running = True
+        
+    # ------------------------------------------------------------------
+    # 게임 상태 관리
+    # ------------------------------------------------------------------
+    def spawn_enemy(self) -> None:
+        Enemy(self.enemy_img, self.enemy_mask, self.all_sprites, self.enemies)
+
 
     # ------------------------------------------------------------------
     # 게임 루프
@@ -324,6 +375,10 @@ class Game:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
+                    
+            elif event.type == self.SPAWN_EVENT:
+                self.spawn_enemy()
+
 
     def update(self) -> None:
         self.background.update()          # 게임오버 화면에서도 배경은 계속 흐르게
